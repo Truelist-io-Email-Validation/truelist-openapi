@@ -1,0 +1,175 @@
+{
+  "info": {
+    "name": "Truelist API",
+    "description": "Email validation API by Truelist. Verify email addresses in real time to reduce bounces and block disposable addresses.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_key}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.truelist.io"
+    },
+    {
+      "key": "api_key",
+      "value": "YOUR_API_KEY"
+    },
+    {
+      "key": "form_api_key",
+      "value": "YOUR_FORM_API_KEY"
+    }
+  ],
+  "item": [
+    {
+      "name": "Email Validation",
+      "item": [
+        {
+          "name": "Form-level email validation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{form_api_key}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/form_verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "form_verify"]
+            },
+            "description": "Validate an email address from a client-side form. Uses the Form API Key. Rate-limited to 60 requests per minute per form key."
+          },
+          "response": [
+            {
+              "name": "Valid email",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"email\": \"user@example.com\",\n  \"state\": \"valid\",\n  \"sub_state\": \"ok\",\n  \"free_email\": true,\n  \"role\": false,\n  \"disposable\": false,\n  \"suggestion\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Server-side email validation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/verify",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "verify"]
+            },
+            "description": "Validate an email address from your backend. Uses the API Key. Rate-limited to 10 requests per second."
+          },
+          "response": [
+            {
+              "name": "Valid email",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"email\": \"user@example.com\",\n  \"state\": \"valid\",\n  \"sub_state\": \"ok\",\n  \"free_email\": true,\n  \"role\": false,\n  \"disposable\": false,\n  \"suggestion\": null\n}"
+            },
+            {
+              "name": "Invalid email",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"email\": \"bad@nonexistent-domain.xyz\",\n  \"state\": \"invalid\",\n  \"sub_state\": \"failed_mx_check\",\n  \"free_email\": false,\n  \"role\": false,\n  \"disposable\": false,\n  \"suggestion\": null\n}"
+            },
+            {
+              "name": "Email with typo suggestion",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"email\": \"user@gmial.com\",\n  \"state\": \"invalid\",\n  \"sub_state\": \"failed_no_mailbox\",\n  \"free_email\": false,\n  \"role\": false,\n  \"disposable\": false,\n  \"suggestion\": \"user@gmail.com\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Account",
+      "item": [
+        {
+          "name": "Get account information",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/v1/account",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "account"]
+            },
+            "description": "Retrieve your account details including current plan and remaining verification credits."
+          },
+          "response": [
+            {
+              "name": "Account info",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"email\": \"you@company.com\",\n  \"plan\": \"pro\",\n  \"credits\": 48500\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
