@@ -14,33 +14,27 @@ info:
     Authorization: Bearer YOUR_API_KEY
     ```
 
-    There are two types of API keys:
-
-    - **Form API Key** — For client-side / frontend use with the `/form_verify` endpoint.
-      Rate-limited to 60 requests per minute per key.
-    - **API Key** — For server-side / backend use with the `/verify` and `/account` endpoints.
-      Rate-limited to 10 requests per second.
-
     ## Rate Limits
 
-    | Endpoint        | Limit              |
-    |-----------------|--------------------|
-    | `/form_verify`  | 60 requests/min    |
-    | `/verify`       | 10 requests/s      |
-    | `/account`      | 10 requests/s      |
+    | Endpoint              | Limit           |
+    |-----------------------|-----------------|
+    | `/api/v1/verify_inline` | 10 requests/s |
+    | `/api/v1/verify`      | 10 requests/s   |
+    | `/me`                 | 10 requests/s   |
 
     When you exceed a rate limit the API returns `429 Too Many Requests`.
 
     ## Validation States
 
-    Every verification returns a `state` and `sub_state`:
+    Every verification returns an `email_state` and `email_sub_state`:
 
-    | State     | Meaning                                           |
-    |-----------|---------------------------------------------------|
-    | `valid`   | The email address is deliverable.                  |
-    | `invalid` | The email address is not deliverable.              |
-    | `risky`   | The address may be deliverable but carries risk.   |
-    | `unknown` | Deliverability could not be determined.            |
+    | State           | Meaning                                           |
+    |-----------------|---------------------------------------------------|
+    | `ok`            | The email address is deliverable.                  |
+    | `email_invalid` | The email address is not deliverable.              |
+    | `risky`         | The address may be deliverable but carries risk.   |
+    | `unknown`       | Deliverability could not be determined.            |
+    | `accept_all`    | The mail server accepts all addresses.             |
   version: 1.0.0
   contact:
     name: Truelist Support
@@ -60,52 +54,56 @@ servers:
 
 tags:
   - name: Email Validation
-    description: Verify individual email addresses in real time.
+    description: Verify email addresses.
+  - name: Batch Verification
+    description: Upload lists for batch email verification.
   - name: Account
-    description: Retrieve account information and credit balance.
+    description: Retrieve account information.
 
 security:
   - BearerAuth: []
 
 paths:
-  /api/v1/form_verify:
+  /api/v1/verify_inline:
     post:
-      operationId: formVerifyEmail
+      operationId: verifyInline
       tags:
         - Email Validation
-      summary: Form-level email validation
+      summary: Inline email validation
       description: |
-        Validate an email address from a client-side form. Use your **Form API Key**
-        for authentication. This endpoint is rate-limited to 60 requests per minute
-        per form key.
+        Validate a single email address synchronously. Pass the email as a query
+        parameter. No request body is required.
 
-        Designed for frontend integrations where you want to give users instant
-        feedback on the email they entered.
-      security:
-        - FormBearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EmailValidationRequest"
-            example:
-              email: "user@example.com"
+        Returns detailed verification results including email state, domain info,
+        and suggested corrections.
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+          description: The email address to validate.
+          example: "user@example.com"
       responses:
         "200":
           description: Validation result returned successfully.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EmailValidationResponse"
+                $ref: "#/components/schemas/InlineVerifyResponse"
               example:
-                email: "user@example.com"
-                state: "valid"
-                sub_state: "ok"
-                free_email: true
-                role: false
-                disposable: false
-                suggestion: null
+                emails:
+                  - address: "user@example.com"
+                    domain: "example.com"
+                    canonical: "user@example.com"
+                    mx_record: null
+                    first_name: null
+                    last_name: null
+                    email_state: "ok"
+                    email_sub_state: "email_ok"
+                    verified_at: "2026-02-21T10:39:12.570Z"
+                    did_you_mean: null
         "401":
           $ref: "#/components/responses/Unauthorized"
         "429":
@@ -115,41 +113,34 @@ paths:
 
   /api/v1/verify:
     post:
-      operationId: verifyEmail
+      operationId: verifyBatch
       tags:
-        - Email Validation
-      summary: Server-side email validation
+        - Batch Verification
+      summary: Batch email verification
       description: |
-        Validate an email address from your backend. Use your **API Key** for
-        authentication. This endpoint is rate-limited to 10 requests per second.
+        Upload a list of emails for batch verification. This endpoint accepts
+        a file (CSV/XLSX) or JSON array of emails and processes them in the
+        background.
 
-        Use this for bulk processing, registration flows, or any server-side
-        validation where you need full control.
-      security:
-        - BearerAuth: []
+        This is NOT the same as inline verification. Use `/api/v1/verify_inline`
+        for synchronous single-email validation.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/EmailValidationRequest"
+              $ref: "#/components/schemas/BatchVerifyRequest"
             example:
-              email: "user@example.com"
+              emails:
+                - "user1@example.com"
+                - "user2@example.com"
       responses:
         "200":
-          description: Validation result returned successfully.
+          description: Batch verification started.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/EmailValidationResponse"
-              example:
-                email: "user@example.com"
-                state: "valid"
-                sub_state: "ok"
-                free_email: true
-                role: false
-                disposable: false
-                suggestion: null
+                $ref: "#/components/schemas/BatchVerifyResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "429":
@@ -157,32 +148,36 @@ paths:
         "500":
           $ref: "#/components/responses/InternalServerError"
 
-  /api/v1/account:
+  /me:
     get:
-      operationId: getAccountInfo
+      operationId: getMe
       tags:
         - Account
       summary: Get account information
       description: |
-        Retrieve your account details including current plan and remaining
-        verification credits. Requires your **API Key**.
-      security:
-        - BearerAuth: []
+        Retrieve your account details including name, email, UUID, time zone,
+        role, API keys, and account plan information.
       responses:
         "200":
           description: Account information returned successfully.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AccountInfoResponse"
+                $ref: "#/components/schemas/MeResponse"
               example:
-                email: "you@company.com"
-                plan: "pro"
-                credits: 48500
+                email: "team@company.com"
+                name: "Team Lead"
+                uuid: "a3828d19-1234-5678-9abc-def012345678"
+                time_zone: "America/New_York"
+                is_admin_role: true
+                token: "abc123"
+                api_keys: []
+                account:
+                  name: "Company Inc"
+                  payment_plan: "pro"
+                  users: []
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "429":
-          $ref: "#/components/responses/RateLimitExceeded"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -192,100 +187,135 @@ components:
       type: http
       scheme: bearer
       description: |
-        Server-side API key. Used with `/verify` and `/account` endpoints.
-        Pass as `Authorization: Bearer YOUR_API_KEY`.
-    FormBearerAuth:
-      type: http
-      scheme: bearer
-      description: |
-        Form API key for client-side use. Used with the `/form_verify` endpoint.
-        Pass as `Authorization: Bearer YOUR_FORM_API_KEY`.
+        API key for authentication. Pass as `Authorization: Bearer YOUR_API_KEY`.
 
   schemas:
-    EmailValidationRequest:
+    EmailResult:
       type: object
       required:
-        - email
+        - address
+        - domain
+        - email_state
+        - email_sub_state
+        - verified_at
       properties:
-        email:
-          type: string
-          format: email
-          description: The email address to validate.
-          examples:
-            - "user@example.com"
-      additionalProperties: false
-
-    EmailValidationResponse:
-      type: object
-      required:
-        - email
-        - state
-        - sub_state
-        - free_email
-        - role
-        - disposable
-        - suggestion
-      properties:
-        email:
+        address:
           type: string
           format: email
           description: The email address that was validated.
-          examples:
-            - "user@example.com"
-        state:
-          $ref: "#/components/schemas/ValidationState"
-        sub_state:
-          $ref: "#/components/schemas/ValidationSubState"
-        free_email:
-          type: boolean
-          description: Whether the email belongs to a free email provider (e.g. Gmail, Yahoo).
-          examples:
-            - true
-        role:
-          type: boolean
-          description: Whether the email is a role-based address (e.g. info@, support@).
-          examples:
-            - false
-        disposable:
-          type: boolean
-          description: Whether the email belongs to a disposable / temporary email provider.
-          examples:
-            - false
-        suggestion:
+        domain:
+          type: string
+          description: The domain part of the email address.
+        canonical:
+          type: string
+          description: The canonical form of the email address.
+        mx_record:
+          type:
+            - string
+            - "null"
+          description: The MX record for the domain, or null if not found.
+        first_name:
+          type:
+            - string
+            - "null"
+          description: First name associated with the email, if detected.
+        last_name:
+          type:
+            - string
+            - "null"
+          description: Last name associated with the email, if detected.
+        email_state:
+          $ref: "#/components/schemas/EmailState"
+        email_sub_state:
+          $ref: "#/components/schemas/EmailSubState"
+        verified_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of when the verification was performed.
+        did_you_mean:
           type:
             - string
             - "null"
           description: |
-            A suggested correction if the email appears to contain a typo
-            (e.g. `user@gmial.com` -> `user@gmail.com`). Null when there is no suggestion.
-          examples:
-            - null
-            - "user@gmail.com"
+            A suggested correction if the email appears to contain a typo.
+            Null when there is no suggestion.
 
-    AccountInfoResponse:
+    InlineVerifyResponse:
+      type: object
+      required:
+        - emails
+      properties:
+        emails:
+          type: array
+          items:
+            $ref: "#/components/schemas/EmailResult"
+          description: Array of verification results.
+
+    BatchVerifyRequest:
+      type: object
+      required:
+        - emails
+      properties:
+        emails:
+          type: array
+          items:
+            type: string
+            format: email
+          description: Array of email addresses to verify.
+
+    BatchVerifyResponse:
+      type: object
+      description: Response from batch verification submission.
+
+    MeResponse:
       type: object
       required:
         - email
-        - plan
-        - credits
+        - name
+        - uuid
       properties:
         email:
           type: string
           format: email
           description: The email address associated with the account.
-          examples:
-            - "you@company.com"
-        plan:
+        name:
           type: string
-          description: The current subscription plan name.
-          examples:
-            - "pro"
-        credits:
-          type: integer
-          minimum: 0
-          description: The number of remaining verification credits.
-          examples:
-            - 48500
+          description: The account holder's name.
+        uuid:
+          type: string
+          format: uuid
+          description: Unique identifier for the user.
+        time_zone:
+          type: string
+          description: The user's time zone.
+        is_admin_role:
+          type: boolean
+          description: Whether the user has admin privileges.
+        token:
+          type: string
+          description: Authentication token.
+        api_keys:
+          type: array
+          items:
+            type: object
+          description: List of API keys associated with the account.
+        account:
+          $ref: "#/components/schemas/AccountInfo"
+
+    AccountInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          description: The account/organization name.
+        payment_plan:
+          type: string
+          description: The current subscription plan.
+        users:
+          type: array
+          items:
+            type: object
+          description: List of users on the account.
 
     ErrorResponse:
       type: object
@@ -295,50 +325,40 @@ components:
         error:
           type: string
           description: A human-readable error message.
-          examples:
-            - "Unauthorized"
 
-    ValidationState:
-      type: string
-      enum:
-        - valid
-        - invalid
-        - risky
-        - unknown
-      description: |
-        The overall validation verdict for the email address.
-
-        - `valid` — The email address is deliverable.
-        - `invalid` — The email address is not deliverable.
-        - `risky` — The address may be deliverable but carries risk (e.g. accept-all domain, role address).
-        - `unknown` — Deliverability could not be determined.
-
-    ValidationSubState:
+    EmailState:
       type: string
       enum:
         - ok
-        - accept_all
-        - disposable_address
-        - role_address
-        - failed_mx_check
-        - failed_spam_trap
-        - failed_no_mailbox
-        - failed_greylisted
-        - failed_syntax_check
+        - email_invalid
+        - risky
         - unknown
+        - accept_all
+      description: |
+        The overall validation verdict for the email address.
+
+        - `ok` -- The email address is deliverable.
+        - `email_invalid` -- The email address is not deliverable.
+        - `risky` -- The address may be deliverable but carries risk.
+        - `unknown` -- Deliverability could not be determined.
+        - `accept_all` -- The mail server accepts all addresses.
+
+    EmailSubState:
+      type: string
+      enum:
+        - email_ok
+        - is_disposable
+        - is_role
+        - unknown_error
+        - failed_smtp_check
       description: |
         A more specific reason for the validation state.
 
-        - `ok` — Passed all checks.
-        - `accept_all` — The mail server accepts all addresses; deliverability is uncertain.
-        - `disposable_address` — The email belongs to a disposable / temporary provider.
-        - `role_address` — The email is a role-based address (e.g. info@, admin@).
-        - `failed_mx_check` — The domain has no valid MX records.
-        - `failed_spam_trap` — The address is a known spam trap.
-        - `failed_no_mailbox` — The mailbox does not exist on the server.
-        - `failed_greylisted` — The server returned a temporary rejection (greylisting).
-        - `failed_syntax_check` — The email address has invalid syntax.
-        - `unknown` — The sub-state could not be determined.
+        - `email_ok` -- Passed all checks.
+        - `is_disposable` -- The email belongs to a disposable / temporary provider.
+        - `is_role` -- The email is a role-based address (e.g. info@, admin@).
+        - `unknown_error` -- The sub-state could not be determined.
+        - `failed_smtp_check` -- The SMTP check failed for this address.
 
   responses:
     Unauthorized:
