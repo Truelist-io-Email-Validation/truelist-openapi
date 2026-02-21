@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Truelist API",
-    "description": "The Truelist email validation API lets you verify email addresses in real time.\nUse it to reduce bounces, block disposable addresses, and keep your lists clean.\n\n## Authentication\n\nAll endpoints require a Bearer token in the `Authorization` header:\n\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\nThere are two types of API keys:\n\n- **Form API Key** — For client-side / frontend use with the `/form_verify` endpoint.\n  Rate-limited to 60 requests per minute per key.\n- **API Key** — For server-side / backend use with the `/verify` and `/account` endpoints.\n  Rate-limited to 10 requests per second.\n\n## Rate Limits\n\n| Endpoint        | Limit              |\n|-----------------|--------------------|            \n| `/form_verify`  | 60 requests/min    |\n| `/verify`       | 10 requests/s      |\n| `/account`      | 10 requests/s      |\n\nWhen you exceed a rate limit the API returns `429 Too Many Requests`.\n\n## Validation States\n\nEvery verification returns a `state` and `sub_state`:\n\n| State     | Meaning                                           |\n|-----------|---------------------------------------------------|\n| `valid`   | The email address is deliverable.                  |\n| `invalid` | The email address is not deliverable.              |\n| `risky`   | The address may be deliverable but carries risk.   |\n| `unknown` | Deliverability could not be determined.            |\n",
+    "description": "The Truelist email validation API lets you verify email addresses in real time.\nUse it to reduce bounces, block disposable addresses, and keep your lists clean.\n\n## Authentication\n\nAll endpoints require a Bearer token in the `Authorization` header:\n\n```\nAuthorization: Bearer YOUR_API_KEY\n```\n\n## Rate Limits\n\n| Endpoint              | Limit           |\n|-----------------------|-----------------|\n| `/api/v1/verify_inline` | 10 requests/s |\n| `/api/v1/verify`      | 10 requests/s   |\n| `/me`                 | 10 requests/s   |\n\nWhen you exceed a rate limit the API returns `429 Too Many Requests`.\n\n## Validation States\n\nEvery verification returns an `email_state` and `email_sub_state`:\n\n| State           | Meaning                                           |\n|-----------------|---------------------------------------------------|\n| `ok`            | The email address is deliverable.                  |\n| `email_invalid` | The email address is not deliverable.              |\n| `risky`         | The address may be deliverable but carries risk.   |\n| `unknown`       | Deliverability could not be determined.            |\n| `accept_all`    | The mail server accepts all addresses.             |\n",
     "version": "1.0.0",
     "contact": {
       "name": "Truelist Support",
@@ -27,11 +27,15 @@
   "tags": [
     {
       "name": "Email Validation",
-      "description": "Verify individual email addresses in real time."
+      "description": "Verify email addresses."
+    },
+    {
+      "name": "Batch Verification",
+      "description": "Upload lists for batch email verification."
     },
     {
       "name": "Account",
-      "description": "Retrieve account information and credit balance."
+      "description": "Retrieve account information."
     }
   ],
   "security": [
@@ -40,46 +44,50 @@
     }
   ],
   "paths": {
-    "/api/v1/form_verify": {
+    "/api/v1/verify_inline": {
       "post": {
-        "operationId": "formVerifyEmail",
-        "tags": ["Email Validation"],
-        "summary": "Form-level email validation",
-        "description": "Validate an email address from a client-side form. Use your **Form API Key**\nfor authentication. This endpoint is rate-limited to 60 requests per minute\nper form key.\n\nDesigned for frontend integrations where you want to give users instant\nfeedback on the email they entered.\n",
-        "security": [
+        "operationId": "verifyInline",
+        "tags": [
+          "Email Validation"
+        ],
+        "summary": "Inline email validation",
+        "description": "Validate a single email address synchronously. Pass the email as a query\nparameter. No request body is required.\n\nReturns detailed verification results including email state, domain info,\nand suggested corrections.\n",
+        "parameters": [
           {
-            "FormBearerAuth": []
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "The email address to validate.",
+            "example": "user@example.com"
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmailValidationRequest"
-              },
-              "example": {
-                "email": "user@example.com"
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Validation result returned successfully.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EmailValidationResponse"
+                  "$ref": "#/components/schemas/InlineVerifyResponse"
                 },
                 "example": {
-                  "email": "user@example.com",
-                  "state": "valid",
-                  "sub_state": "ok",
-                  "free_email": true,
-                  "role": false,
-                  "disposable": false,
-                  "suggestion": null
+                  "emails": [
+                    {
+                      "address": "user@example.com",
+                      "domain": "example.com",
+                      "canonical": "user@example.com",
+                      "mx_record": null,
+                      "first_name": null,
+                      "last_name": null,
+                      "email_state": "ok",
+                      "email_sub_state": "email_ok",
+                      "verified_at": "2026-02-21T10:39:12.570Z",
+                      "did_you_mean": null
+                    }
+                  ]
                 }
               }
             }
@@ -98,44 +106,35 @@
     },
     "/api/v1/verify": {
       "post": {
-        "operationId": "verifyEmail",
-        "tags": ["Email Validation"],
-        "summary": "Server-side email validation",
-        "description": "Validate an email address from your backend. Use your **API Key** for\nauthentication. This endpoint is rate-limited to 10 requests per second.\n\nUse this for bulk processing, registration flows, or any server-side\nvalidation where you need full control.\n",
-        "security": [
-          {
-            "BearerAuth": []
-          }
+        "operationId": "verifyBatch",
+        "tags": [
+          "Batch Verification"
         ],
+        "summary": "Batch email verification",
+        "description": "Upload a list of emails for batch verification. This endpoint accepts\na file (CSV/XLSX) or JSON array of emails and processes them in the\nbackground.\n\nThis is NOT the same as inline verification. Use `/api/v1/verify_inline`\nfor synchronous single-email validation.\n",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EmailValidationRequest"
+                "$ref": "#/components/schemas/BatchVerifyRequest"
               },
               "example": {
-                "email": "user@example.com"
+                "emails": [
+                  "user1@example.com",
+                  "user2@example.com"
+                ]
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Validation result returned successfully.",
+            "description": "Batch verification started.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EmailValidationResponse"
-                },
-                "example": {
-                  "email": "user@example.com",
-                  "state": "valid",
-                  "sub_state": "ok",
-                  "free_email": true,
-                  "role": false,
-                  "disposable": false,
-                  "suggestion": null
+                  "$ref": "#/components/schemas/BatchVerifyResponse"
                 }
               }
             }
@@ -152,38 +151,41 @@
         }
       }
     },
-    "/api/v1/account": {
+    "/me": {
       "get": {
-        "operationId": "getAccountInfo",
-        "tags": ["Account"],
-        "summary": "Get account information",
-        "description": "Retrieve your account details including current plan and remaining\nverification credits. Requires your **API Key**.\n",
-        "security": [
-          {
-            "BearerAuth": []
-          }
+        "operationId": "getMe",
+        "tags": [
+          "Account"
         ],
+        "summary": "Get account information",
+        "description": "Retrieve your account details including name, email, UUID, time zone,\nrole, API keys, and account plan information.\n",
         "responses": {
           "200": {
             "description": "Account information returned successfully.",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AccountInfoResponse"
+                  "$ref": "#/components/schemas/MeResponse"
                 },
                 "example": {
-                  "email": "you@company.com",
-                  "plan": "pro",
-                  "credits": 48500
+                  "email": "team@company.com",
+                  "name": "Team Lead",
+                  "uuid": "a3828d19-1234-5678-9abc-def012345678",
+                  "time_zone": "America/New_York",
+                  "is_admin_role": true,
+                  "token": "abc123",
+                  "api_keys": [],
+                  "account": {
+                    "name": "Company Inc",
+                    "payment_plan": "pro",
+                    "users": []
+                  }
                 }
               }
             }
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
-          },
-          "429": {
-            "$ref": "#/components/responses/RateLimitExceeded"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -197,120 +199,208 @@
       "BearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Server-side API key. Used with `/verify` and `/account` endpoints.\nPass as `Authorization: Bearer YOUR_API_KEY`.\n"
-      },
-      "FormBearerAuth": {
-        "type": "http",
-        "scheme": "bearer",
-        "description": "Form API key for client-side use. Used with the `/form_verify` endpoint.\nPass as `Authorization: Bearer YOUR_FORM_API_KEY`.\n"
+        "description": "API key for authentication. Pass as `Authorization: Bearer YOUR_API_KEY`.\n"
       }
     },
     "schemas": {
-      "EmailValidationRequest": {
+      "EmailResult": {
         "type": "object",
-        "required": ["email"],
+        "required": [
+          "address",
+          "domain",
+          "email_state",
+          "email_sub_state",
+          "verified_at"
+        ],
         "properties": {
-          "email": {
+          "address": {
             "type": "string",
             "format": "email",
-            "description": "The email address to validate.",
-            "examples": ["user@example.com"]
-          }
-        },
-        "additionalProperties": false
-      },
-      "EmailValidationResponse": {
-        "type": "object",
-        "required": ["email", "state", "sub_state", "free_email", "role", "disposable", "suggestion"],
-        "properties": {
-          "email": {
+            "description": "The email address that was validated."
+          },
+          "domain": {
             "type": "string",
-            "format": "email",
-            "description": "The email address that was validated.",
-            "examples": ["user@example.com"]
+            "description": "The domain part of the email address."
           },
-          "state": {
-            "$ref": "#/components/schemas/ValidationState"
+          "canonical": {
+            "type": "string",
+            "description": "The canonical form of the email address."
           },
-          "sub_state": {
-            "$ref": "#/components/schemas/ValidationSubState"
+          "mx_record": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The MX record for the domain, or null if not found."
           },
-          "free_email": {
-            "type": "boolean",
-            "description": "Whether the email belongs to a free email provider (e.g. Gmail, Yahoo).",
-            "examples": [true]
+          "first_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "First name associated with the email, if detected."
           },
-          "role": {
-            "type": "boolean",
-            "description": "Whether the email is a role-based address (e.g. info@, support@).",
-            "examples": [false]
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last name associated with the email, if detected."
           },
-          "disposable": {
-            "type": "boolean",
-            "description": "Whether the email belongs to a disposable / temporary email provider.",
-            "examples": [false]
+          "email_state": {
+            "$ref": "#/components/schemas/EmailState"
           },
-          "suggestion": {
-            "type": ["string", "null"],
-            "description": "A suggested correction if the email appears to contain a typo (e.g. `user@gmial.com` -> `user@gmail.com`). Null when there is no suggestion.\n",
-            "examples": [null, "user@gmail.com"]
+          "email_sub_state": {
+            "$ref": "#/components/schemas/EmailSubState"
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp of when the verification was performed."
+          },
+          "did_you_mean": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A suggested correction if the email appears to contain a typo.\nNull when there is no suggestion.\n"
           }
         }
       },
-      "AccountInfoResponse": {
+      "InlineVerifyResponse": {
         "type": "object",
-        "required": ["email", "plan", "credits"],
+        "required": [
+          "emails"
+        ],
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EmailResult"
+            },
+            "description": "Array of verification results."
+          }
+        }
+      },
+      "BatchVerifyRequest": {
+        "type": "object",
+        "required": [
+          "emails"
+        ],
+        "properties": {
+          "emails": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "email"
+            },
+            "description": "Array of email addresses to verify."
+          }
+        }
+      },
+      "BatchVerifyResponse": {
+        "type": "object",
+        "description": "Response from batch verification submission."
+      },
+      "MeResponse": {
+        "type": "object",
+        "required": [
+          "email",
+          "name",
+          "uuid"
+        ],
         "properties": {
           "email": {
             "type": "string",
             "format": "email",
-            "description": "The email address associated with the account.",
-            "examples": ["you@company.com"]
+            "description": "The email address associated with the account."
           },
-          "plan": {
+          "name": {
             "type": "string",
-            "description": "The current subscription plan name.",
-            "examples": ["pro"]
+            "description": "The account holder's name."
           },
-          "credits": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "The number of remaining verification credits.",
-            "examples": [48500]
+          "uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the user."
+          },
+          "time_zone": {
+            "type": "string",
+            "description": "The user's time zone."
+          },
+          "is_admin_role": {
+            "type": "boolean",
+            "description": "Whether the user has admin privileges."
+          },
+          "token": {
+            "type": "string",
+            "description": "Authentication token."
+          },
+          "api_keys": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "List of API keys associated with the account."
+          },
+          "account": {
+            "$ref": "#/components/schemas/AccountInfo"
+          }
+        }
+      },
+      "AccountInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The account/organization name."
+          },
+          "payment_plan": {
+            "type": "string",
+            "description": "The current subscription plan."
+          },
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "List of users on the account."
           }
         }
       },
       "ErrorResponse": {
         "type": "object",
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "properties": {
           "error": {
             "type": "string",
-            "description": "A human-readable error message.",
-            "examples": ["Unauthorized"]
+            "description": "A human-readable error message."
           }
         }
       },
-      "ValidationState": {
-        "type": "string",
-        "enum": ["valid", "invalid", "risky", "unknown"],
-        "description": "The overall validation verdict for the email address.\n\n- `valid` — The email address is deliverable.\n- `invalid` — The email address is not deliverable.\n- `risky` — The address may be deliverable but carries risk (e.g. accept-all domain, role address).\n- `unknown` — Deliverability could not be determined.\n"
-      },
-      "ValidationSubState": {
+      "EmailState": {
         "type": "string",
         "enum": [
           "ok",
-          "accept_all",
-          "disposable_address",
-          "role_address",
-          "failed_mx_check",
-          "failed_spam_trap",
-          "failed_no_mailbox",
-          "failed_greylisted",
-          "failed_syntax_check",
-          "unknown"
+          "email_invalid",
+          "risky",
+          "unknown",
+          "accept_all"
         ],
-        "description": "A more specific reason for the validation state.\n\n- `ok` — Passed all checks.\n- `accept_all` — The mail server accepts all addresses; deliverability is uncertain.\n- `disposable_address` — The email belongs to a disposable / temporary provider.\n- `role_address` — The email is a role-based address (e.g. info@, admin@).\n- `failed_mx_check` — The domain has no valid MX records.\n- `failed_spam_trap` — The address is a known spam trap.\n- `failed_no_mailbox` — The mailbox does not exist on the server.\n- `failed_greylisted` — The server returned a temporary rejection (greylisting).\n- `failed_syntax_check` — The email address has invalid syntax.\n- `unknown` — The sub-state could not be determined.\n"
+        "description": "The overall validation verdict for the email address.\n\n- `ok` -- The email address is deliverable.\n- `email_invalid` -- The email address is not deliverable.\n- `risky` -- The address may be deliverable but carries risk.\n- `unknown` -- Deliverability could not be determined.\n- `accept_all` -- The mail server accepts all addresses.\n"
+      },
+      "EmailSubState": {
+        "type": "string",
+        "enum": [
+          "email_ok",
+          "is_disposable",
+          "is_role",
+          "unknown_error",
+          "failed_smtp_check"
+        ],
+        "description": "A more specific reason for the validation state.\n\n- `email_ok` -- Passed all checks.\n- `is_disposable` -- The email belongs to a disposable / temporary provider.\n- `is_role` -- The email is a role-based address (e.g. info@, admin@).\n- `unknown_error` -- The sub-state could not be determined.\n- `failed_smtp_check` -- The SMTP check failed for this address.\n"
       }
     },
     "responses": {
@@ -328,7 +418,7 @@
         }
       },
       "RateLimitExceeded": {
-        "description": "Too many requests. You have exceeded the rate limit for this endpoint. Wait before retrying.\n",
+        "description": "Too many requests. You have exceeded the rate limit for this endpoint.\nWait before retrying.\n",
         "content": {
           "application/json": {
             "schema": {

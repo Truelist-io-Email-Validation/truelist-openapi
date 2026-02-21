@@ -22,10 +22,6 @@
     {
       "key": "api_key",
       "value": "YOUR_API_KEY"
-    },
-    {
-      "key": "form_api_key",
-      "value": "YOUR_FORM_API_KEY"
     }
   ],
   "item": [
@@ -33,35 +29,21 @@
       "name": "Email Validation",
       "item": [
         {
-          "name": "Form-level email validation",
+          "name": "Inline email validation",
           "request": {
             "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "auth": {
-              "type": "bearer",
-              "bearer": [
+            "url": {
+              "raw": "{{base_url}}/api/v1/verify_inline?email=user@example.com",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "verify_inline"],
+              "query": [
                 {
-                  "key": "token",
-                  "value": "{{form_api_key}}",
-                  "type": "string"
+                  "key": "email",
+                  "value": "user@example.com"
                 }
               ]
             },
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"user@example.com\"\n}"
-            },
-            "url": {
-              "raw": "{{base_url}}/api/v1/form_verify",
-              "host": ["{{base_url}}"],
-              "path": ["api", "v1", "form_verify"]
-            },
-            "description": "Validate an email address from a client-side form. Uses the Form API Key. Rate-limited to 60 requests per minute per form key."
+            "description": "Validate a single email address synchronously. Email is passed as a query parameter."
           },
           "response": [
             {
@@ -74,12 +56,17 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"email\": \"user@example.com\",\n  \"state\": \"valid\",\n  \"sub_state\": \"ok\",\n  \"free_email\": true,\n  \"role\": false,\n  \"disposable\": false,\n  \"suggestion\": null\n}"
+              "body": "{\n  \"emails\": [\n    {\n      \"address\": \"user@example.com\",\n      \"domain\": \"example.com\",\n      \"canonical\": \"user@example.com\",\n      \"mx_record\": null,\n      \"first_name\": null,\n      \"last_name\": null,\n      \"email_state\": \"ok\",\n      \"email_sub_state\": \"email_ok\",\n      \"verified_at\": \"2026-02-21T10:39:12.570Z\",\n      \"did_you_mean\": null\n    }\n  ]\n}"
             }
           ]
-        },
+        }
+      ]
+    },
+    {
+      "name": "Batch Verification",
+      "item": [
         {
-          "name": "Server-side email validation",
+          "name": "Batch email verification",
           "request": {
             "method": "POST",
             "header": [
@@ -90,53 +77,16 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"user@example.com\"\n}"
+              "raw": "{\n  \"emails\": [\n    \"user1@example.com\",\n    \"user2@example.com\"\n  ]\n}"
             },
             "url": {
               "raw": "{{base_url}}/api/v1/verify",
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "verify"]
             },
-            "description": "Validate an email address from your backend. Uses the API Key. Rate-limited to 10 requests per second."
+            "description": "Upload a list of emails for batch verification. Processes in the background."
           },
-          "response": [
-            {
-              "name": "Valid email",
-              "status": "OK",
-              "code": 200,
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                }
-              ],
-              "body": "{\n  \"email\": \"user@example.com\",\n  \"state\": \"valid\",\n  \"sub_state\": \"ok\",\n  \"free_email\": true,\n  \"role\": false,\n  \"disposable\": false,\n  \"suggestion\": null\n}"
-            },
-            {
-              "name": "Invalid email",
-              "status": "OK",
-              "code": 200,
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                }
-              ],
-              "body": "{\n  \"email\": \"bad@nonexistent-domain.xyz\",\n  \"state\": \"invalid\",\n  \"sub_state\": \"failed_mx_check\",\n  \"free_email\": false,\n  \"role\": false,\n  \"disposable\": false,\n  \"suggestion\": null\n}"
-            },
-            {
-              "name": "Email with typo suggestion",
-              "status": "OK",
-              "code": 200,
-              "header": [
-                {
-                  "key": "Content-Type",
-                  "value": "application/json"
-                }
-              ],
-              "body": "{\n  \"email\": \"user@gmial.com\",\n  \"state\": \"invalid\",\n  \"sub_state\": \"failed_no_mailbox\",\n  \"free_email\": false,\n  \"role\": false,\n  \"disposable\": false,\n  \"suggestion\": \"user@gmail.com\"\n}"
-            }
-          ]
+          "response": []
         }
       ]
     },
@@ -148,11 +98,11 @@
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/v1/account",
+              "raw": "{{base_url}}/me",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "account"]
+              "path": ["me"]
             },
-            "description": "Retrieve your account details including current plan and remaining verification credits."
+            "description": "Retrieve your account details including name, email, plan, and API keys."
           },
           "response": [
             {
@@ -165,7 +115,7 @@
                   "value": "application/json"
                 }
               ],
-              "body": "{\n  \"email\": \"you@company.com\",\n  \"plan\": \"pro\",\n  \"credits\": 48500\n}"
+              "body": "{\n  \"email\": \"team@company.com\",\n  \"name\": \"Team Lead\",\n  \"uuid\": \"a3828d19-1234-5678-9abc-def012345678\",\n  \"time_zone\": \"America/New_York\",\n  \"is_admin_role\": true,\n  \"token\": \"abc123\",\n  \"api_keys\": [],\n  \"account\": {\n    \"name\": \"Company Inc\",\n    \"payment_plan\": \"pro\",\n    \"users\": []\n  }\n}"
             }
           ]
         }
