@@ -16,9 +16,35 @@ This repository contains the OpenAPI 3.1 specification that describes every endp
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/form_verify` | Form-level email validation (frontend) |
-| `POST` | `/api/v1/verify` | Server-side email validation (backend) |
-| `GET`  | `/api/v1/account` | Account info and credit balance |
+| `POST` | `/api/v1/verify_inline?email={email}` | Inline email validation (single, synchronous) |
+| `POST` | `/api/v1/verify` | Batch email verification (list upload, async) |
+| `GET`  | `/me` | Account info, API keys, and plan details |
+
+## Authentication
+
+All endpoints use Bearer token authentication:
+
+```
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Validation States
+
+| `email_state` | Meaning |
+|---------------|---------|
+| `ok` | The email address is deliverable |
+| `email_invalid` | The email address is not deliverable |
+| `risky` | The address may be deliverable but carries risk |
+| `unknown` | Deliverability could not be determined |
+| `accept_all` | The mail server accepts all addresses |
+
+| `email_sub_state` | Meaning |
+|-------------------|---------|
+| `email_ok` | Passed all checks |
+| `is_disposable` | Disposable / temporary email provider |
+| `is_role` | Role-based address (e.g. info@, admin@) |
+| `unknown_error` | Could not be determined |
+| `failed_smtp_check` | SMTP check failed |
 
 ## View the Docs Locally
 
