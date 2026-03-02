@@ -1,5 +1,6 @@
 # Truelist OpenAPI Specification
 
+[![Free tier](https://img.shields.io/badge/free_plan-100_validations-4A7C59?style=flat-square)](https://truelist.io/pricing)
 The single source of truth for the [Truelist](https://truelist.io) email validation API.
 
 This repository contains the OpenAPI 3.1 specification that describes every endpoint, schema, and error response. Use it to generate client SDKs, render interactive documentation, or validate API changes in CI.
